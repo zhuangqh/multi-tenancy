@@ -210,6 +210,11 @@ func (c *controller) getClusterNameServer(client v1core.ServicesGetter, cluster 
 		return "", err
 	}
 
+	clusterIP, exists := svc.Annotations[constants.LabelClusterIP]
+
+	if exists {
+		return clusterIP, nil
+	}
 	return svc.Spec.ClusterIP, nil
 }
 

@@ -88,11 +88,11 @@ func PodMutateDefault(vPod *v1.Pod, vSASecret, SASecret *v1.Secret, services []*
 		p.pPod.Spec.NodeName = ""
 
 		// setup env var map
-		apiServerClusterIP, serviceEnv := getServiceEnvVarMap(p.pPod.Namespace, p.clusterName, p.pPod.Spec.EnableServiceLinks, services)
+		_, serviceEnv := getServiceEnvVarMap(p.pPod.Namespace, p.clusterName, p.pPod.Spec.EnableServiceLinks, services)
 
 		// if apiServerClusterIP is empty, just let it fails.
 		p.pPod.Spec.HostAliases = append(p.pPod.Spec.HostAliases, v1.HostAlias{
-			IP:        apiServerClusterIP,
+			IP:        "1.1.1.1",
 			Hostnames: []string{"kubernetes", "kubernetes.default", "kubernetes.default.svc"},
 		})
 
@@ -236,7 +236,6 @@ func mutateDNSConfig(p *podMutateCtx, vPod *v1.Pod, clusterDomain, nameServer st
 		fallthrough
 	case v1.DNSDefault:
 		// FIXME(zhuangqh): allow host dns or not.
-		p.pPod.Spec.DNSPolicy = v1.DNSNone
 		return
 	}
 }
