@@ -190,14 +190,23 @@ func (c *controller) getPodServiceAccountSecret(pPod *v1.Pod) (*v1.Secret, error
 }
 
 func (c *controller) getClusterNameServer(cluster string) (string, error) {
-	svc, err := c.serviceLister.Services(conversion.ToSuperMasterNamespace(cluster, constants.TenantDNSServerNS)).Get(constants.TenantDNSServerServiceName)
+	ep, err := c.client.Endpoints(conversion.ToSuperMasterNamespace(cluster, constants.TenantDNSServerNS)).Get(constants.TenantDNSServerServiceName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return "", nil
 		}
 		return "", err
 	}
-	return svc.Spec.ClusterIP, nil
+
+	var ip string
+	for _, ss := range ep.Subsets {
+		for _, address := range ss.Addresses {
+			ip = address.IP
+			break
+		}
+	}
+
+	return ip, nil
 }
 
 func (c *controller) getPodRelatedServices(cluster string, pPod *v1.Pod) ([]*v1.Service, error) {

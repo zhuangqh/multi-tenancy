@@ -92,6 +92,7 @@ type ClusterInterface interface {
 	GetClientInfo() *reconciler.ClusterInfo
 	GetClientSet() (*clientset.Clientset, error)
 	GetClientConfig() clientcmd.ClientConfig
+	GetAPIServerHost() (string, string)
 	GetDelegatingClient() (*client.DelegatingClient, error)
 	Cache
 }
@@ -262,6 +263,16 @@ func (c *MultiClusterController) GetClusterClient(clusterName string) (*clientse
 		return nil, fmt.Errorf("could not find cluster %s", clusterName)
 	}
 	return cluster.GetClientSet()
+}
+
+// GetAPIServerHost returns the cluster's apiserver host.
+func (c *MultiClusterController) GetAPIServerHost(clusterName string) (string, string, error) {
+	cluster := c.getCluster(clusterName)
+	if cluster == nil {
+		return "", "", fmt.Errorf("could not find cluster %s", clusterName)
+	}
+	host, port := cluster.GetAPIServerHost()
+	return host, port, nil
 }
 
 // GetClusterClientConfig ClientConfig is used to make it easy to get an api server client.

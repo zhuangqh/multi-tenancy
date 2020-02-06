@@ -18,6 +18,8 @@ package cluster
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -64,6 +66,11 @@ type Cluster struct {
 
 	// vcLister points to the super master virtual cluster informer cache.
 	vclister vclisters.VirtualclusterLister
+
+	// APIServerHost is the host field of apiserver from tenant admin kubeconfig.
+	// or a URL to the base of the apiserver.
+	APIServerHost string
+	APIServerPort string
 
 	// scheme is injected by the controllerManager when controllerManager.Start is called
 	scheme *runtime.Scheme
@@ -115,6 +122,11 @@ func NewTenantCluster(key, namespace, name string, vclister vclisters.Virtualclu
 		return nil, fmt.Errorf("failed to build kube client config: %v", err)
 	}
 
+	apiServerAddress, apiServerPort, err := findAPIServerHost(kubeClientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find apiserver address: %v", err)
+	}
+
 	return &Cluster{
 		key:              key,
 		VCName:           name,
@@ -122,14 +134,36 @@ func NewTenantCluster(key, namespace, name string, vclister vclisters.Virtualclu
 		vclister:         vclister,
 		KubeClientConfig: kubeClientConfig,
 		RestConfig:       clusterRestConfig,
+		APIServerHost:    apiServerAddress,
+		APIServerPort:    apiServerPort,
 		Options:          o,
 		synced:           false,
 		stopCh:           make(chan struct{})}, nil
 }
 
+func findAPIServerHost(clientConfig clientcmd.ClientConfig) (string, string, error) {
+	config, err := clientConfig.ClientConfig()
+	if err != nil {
+		return "", "", err
+	}
+
+	u, err := url.Parse(config.Host)
+	if err != nil {
+		return "", "", err
+	}
+
+	host, port, _ := net.SplitHostPort(u.Host)
+	return host, port, nil
+}
+
 // GetClusterName returns the unique cluster name, aka, the root namespace name.
 func (c *Cluster) GetClusterName() string {
 	return c.key
+}
+
+// GetAPIServerHost returns the apiserver host of the tenant.
+func (c *Cluster) GetAPIServerHost() (string, string) {
+	return c.APIServerHost, c.APIServerPort
 }
 
 // GetSpec returns the virtual cluster spec.
