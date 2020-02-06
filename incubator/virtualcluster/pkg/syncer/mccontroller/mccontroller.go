@@ -91,6 +91,7 @@ type ClusterInterface interface {
 	AddEventHandler(runtime.Object, clientgocache.ResourceEventHandler) error
 	GetClientSet() (clientset.Interface, error)
 	GetDelegatingClient() (client.Client, error)
+	GetAPIServerHost() (string, string)
 	Cache
 }
 
@@ -298,6 +299,15 @@ func (c *MultiClusterController) GetOwnerInfo(clusterName string) (string, strin
 	}
 	name, uid := cluster.GetOwnerInfo()
 	return name, uid, nil
+}
+
+func (c *MultiClusterController) GetAPIServerHost(clusterName string) (string, string, error) {
+	cluster := c.getCluster(clusterName)
+	if cluster == nil {
+		return "", "", fmt.Errorf("could not find cluster %s", clusterName)
+	}
+	host, port := cluster.GetAPIServerHost()
+	return host, port, nil
 }
 
 // GetClusterNames returns the name list of all managed tenant clusters

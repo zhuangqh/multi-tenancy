@@ -222,7 +222,13 @@ func (c *controller) getClusterNameServer(cluster string) (string, error) {
 		}
 		return "", err
 	}
-	return svc.Spec.ClusterIP, nil
+
+	clusterIP, exists := svc.Annotations[constants.LabelClusterIP]
+	if !exists {
+		return "", fmt.Errorf("not found tenant clusterIP")
+	}
+
+	return clusterIP, nil
 }
 
 func (c *controller) getPodRelatedServices(cluster string, pPod *v1.Pod) ([]*v1.Service, error) {

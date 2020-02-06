@@ -18,6 +18,7 @@ package conversion
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"k8s.io/api/core/v1"
@@ -109,13 +110,23 @@ func PodMutateDefault(vPod *v1.Pod, SASecret *v1.Secret, services []*v1.Service,
 		p.pPod.Status = v1.PodStatus{}
 		p.pPod.Spec.NodeName = ""
 
+		_, port, err := p.mc.GetAPIServerHost(p.clusterName)
+		if err != nil {
+			return fmt.Errorf("failed to get apiserver port: %v", err)
+		}
+
+		portInt, err := strconv.Atoi(port)
+		if err != nil {
+			return fmt.Errorf("failed to parse port from apiserver: %v", err)
+		}
+
 		// setup env var map
-		apiServerClusterIP, serviceEnv := getServiceEnvVarMap(p.pPod.Namespace, p.clusterName, p.pPod.Spec.EnableServiceLinks, services)
+		_, serviceEnv := getServiceEnvVarMap(p.pPod.Namespace, p.clusterName, p.pPod.Spec.EnableServiceLinks, services, int32(portInt))
 
 		// if apiServerClusterIP is empty, just let it fails.
 		p.pPod.Spec.HostAliases = append(p.pPod.Spec.HostAliases, v1.HostAlias{
-			IP:        apiServerClusterIP,
-			Hostnames: []string{"kubernetes", "kubernetes.default", "kubernetes.default.svc"},
+			IP:        "1.1.1.1",
+			Hostnames: []string{"kubernetes", "kubernetes.default", "kubernetes.default.svc", "kubernetes.default.svc.cluster.local"},
 		})
 
 		for i := range p.pPod.Spec.Containers {
@@ -160,6 +171,10 @@ func PodMutateDefault(vPod *v1.Pod, SASecret *v1.Secret, services []*v1.Service,
 			return err
 		}
 		mutateDNSConfig(p, vPod, clusterDomain, nameServer)
+
+		if err := addAPIServerAddress(p); err != nil {
+			return err
+		}
 
 		// FIXME(zhuangqh): how to support pod subdomain.
 		if p.pPod.Spec.Subdomain != "" {
@@ -215,7 +230,7 @@ func mutateDownwardAPIField(env *v1.EnvVar, vPod *v1.Pod) {
 	env.ValueFrom = nil
 }
 
-func getServiceEnvVarMap(ns, cluster string, enableServiceLinks *bool, services []*v1.Service) (string, map[string]string) {
+func getServiceEnvVarMap(ns, cluster string, enableServiceLinks *bool, services []*v1.Service, port int32) (string, map[string]string) {
 	var (
 		serviceMap       = make(map[string]*v1.Service)
 		m                = make(map[string]string)
@@ -241,9 +256,6 @@ func getServiceEnvVarMap(ns, cluster string, enableServiceLinks *bool, services 
 		// namespace, if enableServiceLinks is true.
 		if service.Namespace == tenantMasterSvcNs && masterServices.Has(serviceName) {
 			apiServerService = service.Spec.ClusterIP
-			if _, exists := serviceMap[serviceName]; !exists {
-				serviceMap[serviceName] = service
-			}
 		} else if service.Namespace == ns && enableServiceLinks != nil && *enableServiceLinks {
 			serviceMap[serviceName] = service
 		}
@@ -257,6 +269,10 @@ func getServiceEnvVarMap(ns, cluster string, enableServiceLinks *bool, services 
 	for _, e := range envvars.FromServices(mappedServices) {
 		m[e.Name] = e.Value
 	}
+
+	m["KUBERNETES_SERVICE_HOST"] = "kubernetes.default"
+	m["KUBERNETES_SERVICE_PORT"] = strconv.Itoa(int(port))
+
 	return apiServerService, m
 }
 
@@ -278,7 +294,6 @@ func mutateDNSConfig(p *podMutateCtx, vPod *v1.Pod, clusterDomain, nameServer st
 		fallthrough
 	case v1.DNSDefault:
 		// FIXME(zhuangqh): allow host dns or not.
-		p.pPod.Spec.DNSPolicy = v1.DNSNone
 		return
 	}
 }
@@ -334,6 +349,22 @@ func omitDuplicates(strs []string) []string {
 		}
 	}
 	return ret
+}
+
+func addAPIServerAddress(p *podMutateCtx) error {
+	host, _, err := p.mc.GetAPIServerHost(p.clusterName)
+	if err != nil {
+		return err
+	}
+
+	anno := p.pPod.Annotations
+	if anno == nil {
+		anno = make(map[string]string)
+	}
+	anno[constants.LabelExtendAPIServerHost] = host
+	p.pPod.SetAnnotations(anno)
+
+	return nil
 }
 
 // for now, only Deployment Pods are mutated.

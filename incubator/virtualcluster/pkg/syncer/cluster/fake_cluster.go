@@ -90,3 +90,7 @@ func (c *fakeCluster) WaitForCacheSync() bool {
 func (c *fakeCluster) Stop() {
 	return
 }
+
+func (c *fakeCluster) GetAPIServerHost() (string, string) {
+	return "", ""
+}
