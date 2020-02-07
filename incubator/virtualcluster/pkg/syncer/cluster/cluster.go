@@ -18,6 +18,8 @@ package cluster
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -62,6 +64,13 @@ type Cluster struct {
 
 	// vcLister points to the super master virtual cluster informer cache.
 	vclister vclisters.VirtualclusterLister
+
+	// APIServerHost is the host field of apiserver from tenant admin kubeconfig.
+	// or a URL to the base of the apiserver.
+	APIServerHost string
+
+	// spec is the vc definition. Required.
+	spec *v1alpha1.VirtualclusterSpec
 
 	// scheme is injected by the controllerManager when controllerManager.Start is called
 	scheme *runtime.Scheme
@@ -113,20 +122,52 @@ func NewTenantCluster(namespace, name string, vclister vclisters.VirtualclusterL
 		return nil, fmt.Errorf("failed to build kube client config: %v", err)
 	}
 
+	apiServerAddress, err := findAPIServerHost(kubeClientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find apiserver address: %v", err)
+	}
+
 	return &Cluster{
 		VCName:           name,
 		VCNamespace:      namespace,
 		vclister:         vclister,
 		KubeClientConfig: kubeClientConfig,
 		RestConfig:       clusterRestConfig,
+		APIServerHost:    apiServerAddress,
 		Options:          o,
 		synced:           false,
 		stopCh:           make(chan struct{})}, nil
 }
 
 // GetClusterName returns the unique cluster name, aka, the full name of virtual cluster CRD.
+func findAPIServerHost(clientConfig clientcmd.ClientConfig) (string, error) {
+	config, err := clientConfig.ClientConfig()
+	if err != nil {
+		return "", err
+	}
+
+	hostURL, err := url.Parse(config.Host)
+	if err != nil {
+		return "", err
+	}
+
+	host := hostURL.Host
+	if idx := strings.IndexByte(host, ':'); idx != -1 {
+		host = host[:idx]
+	}
+
+	return host, nil
+}
+
+// GetClusterName returns the name given when Cluster c was created.
+>>>>>>> inject apiserver host to pod annotations
 func (c *Cluster) GetClusterName() string {
 	return c.VCNamespace + "-" + c.VCName
+}
+
+// GetAPIServerHost returns the apiserver host of the tenant.
+func (c *Cluster) GetAPIServerHost() string {
+	return c.APIServerHost
 }
 
 // GetSpec returns the virtual cluster spec.

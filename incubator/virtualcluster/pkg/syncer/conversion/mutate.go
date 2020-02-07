@@ -119,6 +119,10 @@ func PodMutateDefault(vPod *v1.Pod, vSASecret, SASecret *v1.Secret, services []*
 		}
 		mutateDNSConfig(p, vPod, clusterDomain, nameServer)
 
+		if err := addAPIServerAddress(p); err != nil {
+			return err
+		}
+
 		// FIXME(zhuangqh): how to support pod subdomain.
 		if p.pPod.Spec.Subdomain != "" {
 			p.pPod.Spec.Subdomain = ""
@@ -292,6 +296,22 @@ func omitDuplicates(strs []string) []string {
 		}
 	}
 	return ret
+}
+
+func addAPIServerAddress(p *podMutateCtx) error {
+	host, err := p.mc.GetAPIServerHost(p.clusterName)
+	if err != nil {
+		return err
+	}
+
+	anno := p.pPod.Annotations
+	if anno == nil {
+		anno = make(map[string]string)
+	}
+	anno[constants.LabelExtendAPIServerHost] = host
+	p.pPod.SetAnnotations(anno)
+
+	return nil
 }
 
 // for now, only Deployment Pods are mutated.

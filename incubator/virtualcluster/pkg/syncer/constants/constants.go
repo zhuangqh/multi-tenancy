@@ -64,6 +64,8 @@ const (
 	LabelExtendDeploymentName = "tenancy.x-k8s.io/extend.deployment.name"
 	// LabelExtendDeploymentUID is the parent deployment uid of pod. only take effect on pods.
 	LabelExtendDeploymentUID = "tenancy.x-k8s.io/extend.deployment.uid"
+	// LabelExtendAPIServerHost is the apiserver host of the tenant.
+	LabelExtendAPIServerHost = "tenancy.x-k8s.io/extend.apiserver.host"
 )
 
 var DefaultDeletionPolicy = metav1.DeletePropagationBackground
