@@ -540,6 +540,59 @@ PollASK:
 		return err
 	}
 	log.Info("the node selector service account is deleted", "vc", vc.GetName())
+
+	// [FLINK] 9. taint the virtual kubelete associated to the ASK
+	err = AddTaintIfNotExist(tenantCli, v1.TaintEffectNoSchedule, "role", "ask-component", "virtual-kubelet")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// AddTaintIfNotExist taints node 'nodeName' with 'v1.Taint{key, val, effect}'
+func AddTaintIfNotExist(cli *kubernetes.Clientset, effect v1.TaintEffect, key, val, nodeName string) error {
+	node, getErr := cli.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+	if getErr != nil {
+		if apierrors.IsNotFound(getErr) {
+			log.Info("the target node is not found", "node", nodeName)
+			return nil
+		}
+		return getErr
+	}
+	taintExist := false
+	for i := range node.Spec.Taints {
+		if node.Spec.Taints[i].Key == key {
+			taintExist = true
+			if node.Spec.Taints[i].Value == val && node.Spec.Taints[i].Effect == effect {
+				log.Info("the target node has already been tainted",
+					"node", nodeName,
+					"taint-key", key,
+					"taint-val", val,
+					"taint-effect", effect)
+				return nil
+			} else {
+				// taint exist but has different value or effect
+				node.Spec.Taints[i].Value = val
+				node.Spec.Taints[i].Effect = effect
+			}
+		}
+	}
+
+	// append the taint to existing taint list, if not exist
+	if taintExist == false {
+		node.Spec.Taints = append(node.Spec.Taints, v1.Taint{
+			Key:    key,
+			Value:  val,
+			Effect: effect,
+		})
+	}
+
+	// update the node
+	node, updateErr := cli.CoreV1().Nodes().Update(node)
+	if updateErr != nil {
+		return updateErr
+	}
+	log.Info("taints of the node have been updated", "node", nodeName, "taints", node.Spec.Taints)
 	return nil
 }
 
