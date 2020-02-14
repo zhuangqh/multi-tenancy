@@ -160,7 +160,6 @@ func findAPIServerHost(clientConfig clientcmd.ClientConfig) (string, error) {
 }
 
 // GetClusterName returns the name given when Cluster c was created.
->>>>>>> inject apiserver host to pod annotations
 func (c *Cluster) GetClusterName() string {
 	return c.VCNamespace + "-" + c.VCName
 }

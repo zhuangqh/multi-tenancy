@@ -47,6 +47,8 @@ type VirtualclusterSpec struct {
 	// are kept in super master. For example, the annotations added by syncer controller.
 	// +optional
 	OpaqueMetaPrefixes []string `json:"opaqueMetaPrefixes,omitempty"`
+
+	ServiceCidr string `json:"serviceCidr,omitempty"`
 }
 
 // VirtualclusterStatus defines the observed state of Virtualcluster

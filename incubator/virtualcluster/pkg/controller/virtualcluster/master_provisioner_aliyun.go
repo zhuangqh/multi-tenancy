@@ -139,7 +139,7 @@ func getClusterIDByName(cli *sdk.Client, clusterName, regionID string) (string, 
 // sendCreationRequest sends ASK creation request to Aliyun. If there exists an ASK
 // with the same clusterName, retrieve and return the clusterID of the ASK instead of
 // creating a new one
-func sendCreationRequest(cli *sdk.Client, clusterName string, askCfg ASKConfig) (string, error) {
+func sendCreationRequest(cli *sdk.Client, clusterName, svcCidr string, askCfg ASKConfig) (string, error) {
 	request := requests.NewCommonRequest()
 	request.Method = "POST"
 	request.Scheme = "http"
@@ -149,34 +149,33 @@ func sendCreationRequest(cli *sdk.Client, clusterName string, askCfg ASKConfig) 
 	request.Headers["Content-Type"] = "application/json"
 	request.QueryParams["RegionId"] = askCfg.regionID
 
-	// set vpc, if vpcID is specified
-	var body string
-	if askCfg.vpcID != "" {
-		body = fmt.Sprintf(`{
-"cluster_type": "Ask",
-"name": "%s", 
+	// set request body
+	body := fmt.Sprintf(`{
+"cluster_type": "ManagedKubernetes",
+"name": "%s",
+"disable_rollback": true,
+"timeout_mins": 60,
 "region_id": "%s",
-"zoneid": "%s", 
-"vpc_id": "%s",
-"vswitch_id": "%s",
-"nat_gateway": false,
-"private_zone": true
-}`, clusterName, askCfg.regionID, askCfg.zoneID, askCfg.vpcID, askCfg.vswitchID)
-	} else {
-		body = fmt.Sprintf(`{
-"cluster_type": "Ask",
-"name": "%s", 
-"region_id": "%s",
-"zoneid": "%s", 
-"nat_gateway": true,
-"private_zone": true
-}`, clusterName, askCfg.regionID, askCfg.zoneID)
-	}
+"cloud_monitor_flags": false,
+"endpoint_public_access":false,
+"public_slb": false,
+"worker_instance_type": "ecs.sn1.large",
+"num_of_nodes": 0,
+"worker_system_disk_category": "cloud_efficiency",
+"worker_system_disk_size": 120,
+"worker_instance_charge_type": "PostPaid",
+"vpcid": "%s",
+"vswitch_ids":["%s"],
+"service_cidr": "%s",
+"login_password": "Just4Test",
+"profile": "Asi",
+"kubernetes_version": "v1.12.5-alibaba.1",
+"etcd_exclusive": false
+}`, clusterName, askCfg.regionID, askCfg.vpcID, askCfg.vswitchID, svcCidr)
 
 	request.Content = []byte(body)
 	response, err := cli.ProcessCommonRequest(request)
 	if err != nil {
-
 		return "", err
 	}
 
@@ -396,15 +395,18 @@ func (mpa *MasterProvisionerAliyun) getASKConfigs() (cfg ASKConfig, err error) {
 	}
 
 	vpcID, viExist := ASKCfgMp.Data[AliyunASKCfgMpVPCID]
+	if !viExist {
+		err = errors.New("vpcID must be provided")
+		return
+	}
 	vsID, vsiExist := ASKCfgMp.Data[AliyunASKCfgMpVSID]
-	if viExist != vsiExist {
-		err = errors.New("vswitchID and vpcID need to be used together")
+	if !vsiExist {
+		err = errors.New("vswitchID must be provided")
+		return
 	}
 
-	if viExist && vsiExist {
-		cfg.vpcID = vpcID
-		cfg.vswitchID = vsID
-	}
+	cfg.vpcID = vpcID
+	cfg.vswitchID = vsID
 
 	return
 }
@@ -436,7 +438,11 @@ func (mpa *MasterProvisionerAliyun) CreateVirtualCluster(vc *tenancyv1alpha1.Vir
 		clsSlbId string
 	)
 	creationTimeout := time.After(100 * time.Second)
-	clsID, err = sendCreationRequest(cli, vc.Name, askCfg)
+	// ServiceCidr is a mandatory field
+	if vc.Spec.ServiceCidr == "" {
+		return fmt.Errorf("Virtualcluster(%s) has empty ServiceCidr", vc.GetName())
+	}
+	clsID, err = sendCreationRequest(cli, vc.Name, vc.Spec.ServiceCidr, askCfg)
 	if err != nil {
 		if !isSDKErr(err) {
 			return err
@@ -542,7 +548,7 @@ PollASK:
 	log.Info("the node selector service account is deleted", "vc", vc.GetName())
 
 	// [FLINK] 9. taint the virtual kubelete associated to the ASK
-	err = AddTaintIfNotExist(tenantCli, v1.TaintEffectNoSchedule, "role", "ask-component", "virtual-kubelet")
+	err = AddTaintIfNotExist(tenantCli, corev1.TaintEffectNoSchedule, "role", "ask-component", "virtual-kubelet")
 	if err != nil {
 		return err
 	}
@@ -550,7 +556,7 @@ PollASK:
 }
 
 // AddTaintIfNotExist taints node 'nodeName' with 'v1.Taint{key, val, effect}'
-func AddTaintIfNotExist(cli *kubernetes.Clientset, effect v1.TaintEffect, key, val, nodeName string) error {
+func AddTaintIfNotExist(cli *kubernetes.Clientset, effect corev1.TaintEffect, key, val, nodeName string) error {
 	node, getErr := cli.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
 	if getErr != nil {
 		if apierrors.IsNotFound(getErr) {
@@ -580,7 +586,7 @@ func AddTaintIfNotExist(cli *kubernetes.Clientset, effect v1.TaintEffect, key, v
 
 	// append the taint to existing taint list, if not exist
 	if taintExist == false {
-		node.Spec.Taints = append(node.Spec.Taints, v1.Taint{
+		node.Spec.Taints = append(node.Spec.Taints, corev1.Taint{
 			Key:    key,
 			Value:  val,
 			Effect: effect,

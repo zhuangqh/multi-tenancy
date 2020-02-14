@@ -10,8 +10,6 @@ spec:
   names:
     kind: Virtualcluster
     plural: virtualclusters
-    shortNames:
-    - vc
   scope: Namespaced
   validation:
     openAPIV3Schema:
@@ -35,6 +33,8 @@ spec:
             pkiExpireDays:
               format: int64
               type: integer
+            serviceCidr:
+              type: string
             transparentMetaPrefixes:
               items:
                 type: string
