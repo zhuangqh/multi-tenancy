@@ -139,6 +139,13 @@ func PodMutateDefault(vPod *v1.Pod, SASecret *v1.Secret, services []*v1.Service,
 			p.pPod.Spec.Subdomain = ""
 		}
 
+		p.pPod.Spec.InitContainers = append([]v1.Container{
+			{
+				Name:  "kube-proxy-guard",
+				Image: "registry.cn-hangzhou.aliyuncs.com/virtualcluster/kube-proxy-guard:latest",
+			},
+		}, p.pPod.Spec.InitContainers...)
+
 		return nil
 	}
 }
